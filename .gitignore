@@ -1,0 +1,58 @@
+# Environment variables and secrets
+.env
+.env.local
+
+# API tokens and keys
+tokens.json
+accounts.json
+
+# Database files
+spending.db
+*.db
+*.sqlite
+*.sqlite3
+
+# Python virtual environment
+.venv/
+venv/
+env/
+
+# Project-specific files
+live_exchange_code.py
+basic_aggregations.py
+cost_tracking.py
+try.py
+
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+
+# Streamlit
+.streamlit/secrets.toml
+
+# Logs
+*.log
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Build
+dist/
+build/
+*.egg-info/
