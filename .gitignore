@@ -3,11 +3,11 @@
 .env.local
 
 # API tokens and keys
-tokens.json
+#tokens.json
 accounts.json
 
 # Database files
-spending.db
+#spending.db
 *.db
 *.sqlite
 *.sqlite3
