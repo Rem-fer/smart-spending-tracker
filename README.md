@@ -12,7 +12,9 @@ AI-powered personal finance dashboard with automated transaction categorization 
 
 ## Live Demo
 
-🔗 [View Dashboard](your-deployment-url-here)
+🔗 https://smart-spending-tracker-production.up.railway.app/
+
+![Screenshot 2026-02-20 at 11.52.52.png](Screenshot%202026-02-20%20at%2011.52.52.png)
 
 *Uses TrueLayer sandbox with mock transaction data for demonstration*
 
