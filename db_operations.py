@@ -94,11 +94,11 @@ def save_single_transaction_to_db(transaction, account_id, conn):
             None,  # category - will categorize later
             None,  # merchant_name - will extract later
         ))
-
         return True
     except psycopg2.Error as e:
         print(f"Error saving transaction: {e}")
         return False
+
 
 
 def save_all_transactions_to_db(access_token):
@@ -134,7 +134,8 @@ def save_all_transactions_to_db(access_token):
             for transaction in all_transactions[account_id]:
                 # print(f"Saving transaction: {transaction['transaction_id']}")
                 try:
-                    save_single_transaction_to_db(transaction, account_id, conn)
+                    result = save_single_transaction_to_db(transaction, account_id, conn)
+                    # print(f"Saved: {transaction['transaction_id']} - {result}")
                     saved_count += 1
                 except psycopg2.Error as e:
                     print(f"Database error for transaction {transaction['transaction_id']}: {e}")
