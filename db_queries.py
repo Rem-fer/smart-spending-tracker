@@ -1,11 +1,13 @@
 import sqlite3
 import pandas as pd
 from datetime import datetime, timedelta
+import psycopg2
+from db import get_connection
 
 
 def count_nulls(column):
     """Gets Null vales for field selected in as parameter"""
-    with sqlite3.connect('spending.db') as conn:
+    with get_connection() as conn:
         cursor = conn.cursor()
 
         cursor.execute(f"SELECT COUNT(*) FROM transactions WHERE {column} IS NULL")
@@ -14,11 +16,13 @@ def count_nulls(column):
 
 def get_spending_this_week():
     """Query db for total spending of the current week to date"""
-    conn = sqlite3.connect('spending.db')
+    conn = get_connection()
     cursor = conn.cursor()
-    cursor.execute("SELECT SUM(amount) FROM transactions "
-                   "WHERE  transaction_date >= date('now', 'weekday 0', '-6 days') "
-                   "AND amount < 0")
+    cursor.execute("""
+        SELECT SUM(amount) FROM finance.transactions 
+        WHERE transaction_date >= CURRENT_DATE - INTERVAL '6 days'
+        AND amount < 0
+    """)
     result = cursor.fetchone()[0]
     cursor.close()
     return abs(result) if result else 0.0
@@ -26,22 +30,26 @@ def get_spending_this_week():
 
 def get_spending_this_month():
     """Query db for total spending of the current month to date"""
-    conn = sqlite3.connect('spending.db')
+    conn = get_connection()
     cursor = conn.cursor()
-    cursor.execute("SELECT SUM(amount) FROM transactions "
-                   "WHERE transaction_date >= date('now', 'start of month') "
-                   "AND amount < 0")
+    cursor.execute("""
+        SELECT SUM(amount) FROM finance.transactions 
+        WHERE transaction_date >= DATE_TRUNC('month', CURRENT_DATE)
+        AND amount < 0
+    """)
     result= cursor.fetchone()[0]
     cursor.close()
     return abs(result) if result else 0.0
 
 
 def get_last_transactions(limit=10):
-    conn = sqlite3.connect('spending.db')
+    conn = get_connection()
     cursor = conn.cursor()
-    cursor.execute("SELECT description, transaction_date, amount FROM transactions "
-                   "ORDER BY transaction_date DESC "
-                   "LIMIT ?",(limit,))
+    cursor.execute("""
+        SELECT description, transaction_date, amount FROM finance.transactions 
+        ORDER BY transaction_date DESC 
+        LIMIT %s
+    """, (limit,))
     columns = [desc[0] for desc in cursor.description]
     data = cursor.fetchall()
     cursor.close()
@@ -60,26 +68,27 @@ def get_spending_by_months(time_frame="All time"):
     days = days_map[time_frame]
     if days:
         cutoff_date = (datetime.now() - timedelta(days=days)).strftime('%Y-%m-%d')
-        conn = sqlite3.connect('spending.db')
+        conn = get_connection()
         cursor = conn.cursor()
-        cursor.execute("SELECT strftime('%Y-%m', timestamp) AS month, "
-                       "abs(SUM(amount)) AS spending "
-                       "FROM transactions "
-                       "WHERE amount < 0 AND transaction_date >= ?"
-                       " GROUP BY month "
-                       "ORDER BY month",
-                       (cutoff_date,)
-                       )
+        cursor.execute("""
+            SELECT TO_CHAR(timestamp, 'YYYY-MM') AS month,
+            ABS(SUM(amount)) AS spending
+            FROM finance.transactions
+            WHERE amount < 0 AND transaction_date >= %s
+            GROUP BY month
+            ORDER BY month
+        """, (cutoff_date,))
     else:
-        conn = sqlite3.connect('spending.db')
+        conn = get_connection()
         cursor = conn.cursor()
-        cursor.execute("SELECT strftime('%Y-%m', timestamp) AS month, "
-                       "abs(SUM(amount)) AS spending "
-                       "FROM transactions "
-                       "WHERE amount < 0"
-                       " GROUP BY month "
-                       "ORDER BY month"
-                       )
+        cursor.execute("""
+            SELECT TO_CHAR(timestamp, 'YYYY-MM') AS month,
+            ABS(SUM(amount)) AS spending
+            FROM finance.transactions
+            WHERE amount < 0
+            GROUP BY month
+            ORDER BY month
+        """)
 
     columns = [desc[0] for desc in cursor.description]
     data = cursor.fetchall()
@@ -101,24 +110,25 @@ def get_spending_by_category(time_frame="All time"):
     if days:
         cutoff_date = (datetime.now() - timedelta(days=days)).strftime('%Y-%m-%d')
 
-        conn = sqlite3.connect('spending.db')
+        conn = get_connection()
         cursor = conn.cursor()
-        cursor.execute("SELECT category, ROUND(abs(SUM(amount)),2) AS spending "
-                       "FROM transactions "
-                       "WHERE amount < 0 AND transaction_date >= ? "
-                       "GROUP BY category "
-                       "ORDER BY spending DESC",
-                       (cutoff_date,)
-                       )
+        cursor.execute("""
+            SELECT category, ROUND(ABS(SUM(amount)), 2) AS spending
+            FROM finance.transactions
+            WHERE amount < 0 AND transaction_date >= %s
+            GROUP BY category
+            ORDER BY spending DESC
+        """, (cutoff_date,))
     else:
-        conn = sqlite3.connect('spending.db')
+        conn = get_connection()
         cursor = conn.cursor()
-        cursor.execute("SELECT category, ROUND(abs(SUM(amount)),2) AS spending "
-                       "FROM transactions "
-                       "WHERE amount < 0 "
-                       "GROUP BY category "
-                       "ORDER BY spending DESC"
-                       )
+        cursor.execute("""
+            SELECT category, ROUND(ABS(SUM(amount)), 2) AS spending
+            FROM finance.transactions
+            WHERE amount < 0
+            GROUP BY category
+            ORDER BY spending DESC
+        """)
 
     columns = [desc[0] for desc in cursor.description]
     data = cursor.fetchall()
@@ -136,23 +146,24 @@ def get_largest_transactions(time_frame="All time"):
     days = days_map[time_frame]
     if days:
         cutoff_date = (datetime.now() - timedelta(days=days)).strftime('%Y-%m-%d')
-        conn = sqlite3.connect('spending.db')
+        conn = get_connection()
         cursor = conn.cursor()
-        cursor.execute("SELECT transaction_date, description, category, amount "
-                       "FROM transactions "
-                       "WHERE transaction_date >= ? "
-                       "ORDER BY amount DESC "
-                       "LIMIT 10",
-                       (cutoff_date,)
-                       )
+        cursor.execute("""
+            SELECT transaction_date, description, category, amount
+            FROM finance.transactions
+            WHERE transaction_date >= %s
+            ORDER BY amount DESC
+            LIMIT 10
+        """, (cutoff_date,))
     else:
-        conn = sqlite3.connect('spending.db')
+        conn = get_connection()
         cursor = conn.cursor()
-        cursor.execute("SELECT transaction_date, description, category, amount "
-                       "FROM transactions "
-                       "ORDER BY amount DESC "
-                       "LIMIT 10"
-                       )
+        cursor.execute("""
+            SELECT transaction_date, description, category, amount
+            FROM finance.transactions
+            ORDER BY amount DESC
+            LIMIT 10
+        """)
     columns = [desc[0] for desc in cursor.description]
     data = cursor.fetchall()
     cursor.close()
@@ -169,15 +180,15 @@ def get_total_spending(time_frame="All time"):
     days = days_map[time_frame]
     if days:
         cutoff_date = (datetime.now() - timedelta(days=days)).strftime('%Y-%m-%d')
-        conn = sqlite3.connect('spending.db')
+        conn = get_connection()
         cursor = conn.cursor()
-        cursor.execute("SELECT SUM(amount) as total_spending "
-                       "FROM transactions "
-                       "WHERE transaction_date >= ? ",
-                       (cutoff_date,)
-                       )
+        cursor.execute("""
+            SELECT SUM(amount) AS total_spending
+            FROM finance.transactions
+            WHERE transaction_date >= %s
+        """, (cutoff_date,))
     else:
-        conn = sqlite3.connect('spending.db')
+        conn = get_connection()
         cursor = conn.cursor()
         cursor.execute("SELECT SUM(amount) as total_spending "
                        "FROM transactions "
@@ -189,7 +200,7 @@ def get_total_spending(time_frame="All time"):
 
 
 def get_each_account_balance_history():
-    conn = sqlite3.connect("spending.db")
+    conn = get_connection()
     cursor = conn.cursor()
     cursor.execute("SELECT * FROM balance_history")
 
@@ -199,7 +210,7 @@ def get_each_account_balance_history():
     return pd.DataFrame(data, columns=columns)
 
 def get_total_balance_history():
-    conn = sqlite3.connect("spending.db")
+    conn = get_connection()
     cursor = conn.cursor()
     cursor.execute("SELECT SUM(current_balance) AS current_balance, snapshot_date "
                    "FROM balance_history "

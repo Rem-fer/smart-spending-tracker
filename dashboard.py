@@ -203,7 +203,6 @@ def display_llm_insights(time_period):
 st.markdown("# Personal Finance Dashboard")
 access_token = get_access_token()
 
-
 # Sidebar settings. Control time_period for trends.
 with st.sidebar:
     st.markdown("## Filters")
@@ -219,12 +218,14 @@ with st.sidebar:
 
 # Display data
 tab1, tab2, tab3 = st.tabs(["Overview", "Trends", "AI Insights"])
+
+# Overview
 with tab1:
     display_balance_transactions(access_token)
-
+# Trends
 with tab2:
     display_spending_trends(time_period)
-
+# LLM Insights
 with tab3:
     placeholder = st.empty()
     full_text = ""

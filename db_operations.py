@@ -2,6 +2,8 @@ import sqlite3
 from account_data import fetching_all_transactions, get_all_accounts_balance
 from llm import batch_categorise_llm
 from datetime import datetime
+from db import get_connection
+import psycopg2
 
 def create_transactions_database():
     conn = sqlite3.connect("spending.db")
@@ -61,9 +63,9 @@ def create_balances_table():
 # conn.close()
 # print("Database created successfully")
 
-def save_single_transaction_to_db(transaction, account_id):
+def save_single_transaction_to_db(transaction, account_id, conn):
     """Save a single transaction to the database."""
-    conn = sqlite3.connect('spending.db')
+    conn = conn
     cursor = conn.cursor()
 
     # Extract date from timestamp (YYYY-MM-DD)
@@ -73,13 +75,14 @@ def save_single_transaction_to_db(transaction, account_id):
     running_balance = transaction.get('running_balance', {}).get('amount')
 
     try:
-        cursor.execute('''
-            INSERT OR IGNORE INTO transactions
-            (transaction_id, account_id, amount, currency, description,
-             transaction_date, timestamp, transaction_type, category,
-             merchant_name)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        ''', (
+        cursor.execute("""
+    INSERT INTO finance.transactions
+    (transaction_id, account_id, amount, currency, description,
+     transaction_date, timestamp, transaction_type, category,
+     merchant_name)
+    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+    ON CONFLICT (transaction_id) DO NOTHING
+    """, (
             transaction['transaction_id'],
             account_id,
             transaction['amount'],
@@ -92,13 +95,10 @@ def save_single_transaction_to_db(transaction, account_id):
             None,  # merchant_name - will extract later
         ))
 
-        conn.commit()
         return True
-    except sqlite3.Error as e:
+    except psycopg2.Error as e:
         print(f"Error saving transaction: {e}")
         return False
-    finally:
-        conn.close()
 
 
 def save_all_transactions_to_db(access_token):
@@ -112,7 +112,9 @@ def save_all_transactions_to_db(access_token):
         list: Transaction IDs that failed to save (empty if all successful)
         True: If all transactions saved successfully
     """
+    print("Fetching all transactions...")
     all_transactions = fetching_all_transactions(access_token)
+    print(f"Got transactions: {all_transactions is not None}")
     failed_transactions = []
     saved_count = 0
 
@@ -120,20 +122,27 @@ def save_all_transactions_to_db(access_token):
         print("No transactions found")
         return []
 
-    for account_id in all_transactions:
-        if not all_transactions[account_id]:
-            print(f"No transactions for account: {account_id}")
-            continue
+    conn = get_connection()
 
-        for transaction in all_transactions[account_id]:
-            try:
-                save_single_transaction_to_db(transaction, account_id)
-                saved_count += 1
-            except sqlite3.Error as e:
-                print(f"Database error for transaction {transaction['transaction_id']}: {e}")
-                failed_transactions.append(transaction["transaction_id"])
+    try:
+        for account_id in all_transactions:
+            # print(f"Processing account: {account_id}")
+            if not all_transactions[account_id]:
+                print(f"No transactions for account: {account_id}")
+                continue
 
-    print(f"Successfully saved {saved_count} transactions")
+            for transaction in all_transactions[account_id]:
+                # print(f"Saving transaction: {transaction['transaction_id']}")
+                try:
+                    save_single_transaction_to_db(transaction, account_id, conn)
+                    saved_count += 1
+                except psycopg2.Error as e:
+                    print(f"Database error for transaction {transaction['transaction_id']}: {e}")
+                    failed_transactions.append(transaction["transaction_id"])
+        conn.commit()
+        print(f"Successfully saved {saved_count} transactions")
+    finally:
+        conn.close()
 
     if failed_transactions:
         print(f"Failed to save {len(failed_transactions)} transactions")
@@ -169,10 +178,10 @@ def save_all_transactions_to_db(access_token):
 
 def update_all_categories_batch():
     """Update categories for all transactions using batch processing."""
-    conn = sqlite3.connect('spending.db')
+    conn = get_connection()
     cursor = conn.cursor()
 
-    cursor.execute("SELECT transaction_id, description FROM transactions WHERE category IS NULL")
+    cursor.execute("SELECT transaction_id, description FROM finance.transactions WHERE category IS NULL")
     transactions = cursor.fetchall()
 
     print(f"Categorizing {len(transactions)} transactions...")
@@ -191,7 +200,7 @@ def update_all_categories_batch():
         for trans_id, description in batch:
             category = category_map.get(description, 'Uncategorized')
             cursor.execute(
-                "UPDATE transactions SET category = ? WHERE transaction_id = ?",
+                "UPDATE finance.transactions SET category = %s WHERE transaction_id = %s",
                 (category, trans_id)
             )
             total_updated += 1
@@ -203,14 +212,14 @@ def update_all_categories_batch():
     print("Done!")
 
 def get_random_transactions(number):
-    conn = sqlite3.connect('spending.db')
+    conn = get_connection()
     cursor = conn.cursor()
 
     # cursor.execute("SELECT description, category FROM transactions LIMIT 100")
     cursor.execute("""
-        SELECT description, category FROM transactions 
+        SELECT description, category FROM finance.transactions 
         ORDER BY RANDOM() 
-        LIMIT ?
+        LIMIT %s
     """,(number,))
 
     for row in cursor.fetchall():
@@ -235,16 +244,17 @@ def save_daily_balance_snapshot(access_token):
         print("No balances to save")
         return
 
-    conn = sqlite3.connect('spending.db')
+    conn = get_connection()
     cursor = conn.cursor()
 
     snapshot_date = datetime.now().date().isoformat()  # YYYY-MM-DD format
 
     for account_id, balance_info in balances.items():
         cursor.execute("""
-            INSERT OR IGNORE INTO balance_history
+            INSERT INTO finance.balance_history
             (account_id, current_balance, available_balance, overdraft_limit, snapshot_date)
-            VALUES (?, ?, ?, ?, ?)
+            VALUES (%s, %s, %s, %s, %s)
+            ON CONFLICT (account_id, snapshot_date) DO NOTHING
         """, (
             account_id,
             balance_info.get('current'),

@@ -12,7 +12,7 @@ def call_api(url,access_token, retries=3):
     headers = {"Authorization": f"Bearer {access_token}"}
     for attempt in range(retries):
         try:
-            response = requests.get(url, headers=headers)
+            response = requests.get(url, headers=headers, timeout=10)
             response.raise_for_status()
             return response.json()
         except requests.exceptions.ConnectionError as e:

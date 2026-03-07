@@ -88,8 +88,9 @@ def fetching_all_transactions(access_token):
               Format: {account_id: [transaction1, transaction2, ...]}
               Returns None if no accounts found or all fetches failed.
     """
+    print("Getting account IDs...")
     account_ids = get_account_ids()
-
+    print(f"Account IDs: {account_ids}")
     if not account_ids:
         print("No accounts found")
         return None

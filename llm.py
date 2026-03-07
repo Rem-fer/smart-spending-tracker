@@ -1,13 +1,11 @@
 import os
 import json
-from dotenv import load_dotenv
-from anthropic import Anthropic
 from litellm import completion
 from dotenv import load_dotenv
 import os
 from db_queries import get_spending_by_months, get_spending_by_category
 from db_queries import get_total_spending, get_largest_transactions
-import sqlite3
+from db import get_connection
 
 
 load_dotenv()
@@ -46,16 +44,20 @@ SYSTEM_PROMPT = """You are a personal finance analyst helping users understand t
 
    Keep it under 200 words."""
 
-def log_api_cost(response):
+def log_api_cost(response, project="spending_tracker"):
     """Log LLM API call costs to database."""
-    conn = sqlite3.connect('spending.db')
+    conn = get_connection()
     cursor = conn.cursor()
 
+    provider = response.model.split("/")[0] if "/" in response.model else "anthropic"
+
     cursor.execute("""
-        INSERT INTO api_costs 
-        (model, input_tokens, output_tokens, total_tokens, cost)
-        VALUES (?, ?, ?, ?, ?)
+        INSERT INTO finance.api_costs 
+        (provider, project, model, input_tokens, output_tokens, total_tokens, cost)
+        VALUES (%s, %s, %s, %s, %s, %s, %s)
     """, (
+        provider,
+        project,
         response.model,
         response.usage.prompt_tokens,
         response.usage.completion_tokens,
