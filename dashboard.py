@@ -151,6 +151,7 @@ def display_spending_trends(time_period):
     # Total Balance history
     st.markdown("### Total balance History")
     total_balance_df = get_total_balance_history()
+    # st.write(total_balance_df)
     fig_1 = px.line(total_balance_df, x='snapshot_date', y='current_balance')
     st.plotly_chart(fig_1)
 

@@ -214,7 +214,8 @@ def get_total_balance_history():
     cursor = conn.cursor()
     cursor.execute("SELECT SUM(current_balance) AS current_balance, snapshot_date "
                    "FROM spending_tracker.balance_history "
-                   "GROUP BY snapshot_date")
+                   "GROUP BY snapshot_date "
+                   "ORDER BY snapshot_date")
 
     columns = [desc[0] for desc in cursor.description]
     data = cursor.fetchall()
