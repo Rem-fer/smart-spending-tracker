@@ -8,7 +8,6 @@ import os
 load_dotenv()
 
 if __name__ == "__main__":
-    print(os.getenv("DB_HOST"))
     access_token = get_access_token()
     save_all_transactions_to_db(access_token)
     update_all_categories_batch()

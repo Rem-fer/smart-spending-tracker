@@ -52,7 +52,7 @@ def log_api_cost(response, project="spending_tracker"):
     provider = response.model.split("/")[0] if "/" in response.model else "anthropic"
 
     cursor.execute("""
-        INSERT INTO finance.api_costs 
+        INSERT INTO spending_tracker.api_costs 
         (provider, project, model, input_tokens, output_tokens, total_tokens, cost)
         VALUES (%s, %s, %s, %s, %s, %s, %s)
     """, (

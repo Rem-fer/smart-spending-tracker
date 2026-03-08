@@ -76,7 +76,7 @@ def save_single_transaction_to_db(transaction, account_id, conn):
 
     try:
         cursor.execute("""
-    INSERT INTO finance.transactions
+    INSERT INTO spending_tracker.transactions
     (transaction_id, account_id, amount, currency, description,
      transaction_date, timestamp, transaction_type, category,
      merchant_name)
@@ -182,7 +182,7 @@ def update_all_categories_batch():
     conn = get_connection()
     cursor = conn.cursor()
 
-    cursor.execute("SELECT transaction_id, description FROM finance.transactions WHERE category IS NULL")
+    cursor.execute("SELECT transaction_id, description FROM spending_tracker.transactions WHERE category IS NULL")
     transactions = cursor.fetchall()
 
     print(f"Categorizing {len(transactions)} transactions...")
@@ -201,7 +201,7 @@ def update_all_categories_batch():
         for trans_id, description in batch:
             category = category_map.get(description, 'Uncategorized')
             cursor.execute(
-                "UPDATE finance.transactions SET category = %s WHERE transaction_id = %s",
+                "UPDATE spending_tracker.transactions SET category = %s WHERE transaction_id = %s",
                 (category, trans_id)
             )
             total_updated += 1
@@ -218,7 +218,7 @@ def get_random_transactions(number):
 
     # cursor.execute("SELECT description, category FROM transactions LIMIT 100")
     cursor.execute("""
-        SELECT description, category FROM finance.transactions 
+        SELECT description, category FROM spending_tracker.transactions 
         ORDER BY RANDOM() 
         LIMIT %s
     """,(number,))
@@ -252,7 +252,7 @@ def save_daily_balance_snapshot(access_token):
 
     for account_id, balance_info in balances.items():
         cursor.execute("""
-            INSERT INTO finance.balance_history
+            INSERT INTO spending_tracker.balance_history
             (account_id, current_balance, available_balance, overdraft_limit, snapshot_date)
             VALUES (%s, %s, %s, %s, %s)
             ON CONFLICT (account_id, snapshot_date) DO NOTHING

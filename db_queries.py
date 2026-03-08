@@ -19,7 +19,7 @@ def get_spending_this_week():
     conn = get_connection()
     cursor = conn.cursor()
     cursor.execute("""
-        SELECT SUM(amount) FROM finance.transactions 
+        SELECT SUM(amount) FROM spending_tracker.transactions 
         WHERE transaction_date >= CURRENT_DATE - INTERVAL '6 days'
         AND amount < 0
     """)
@@ -33,7 +33,7 @@ def get_spending_this_month():
     conn = get_connection()
     cursor = conn.cursor()
     cursor.execute("""
-        SELECT SUM(amount) FROM finance.transactions 
+        SELECT SUM(amount) FROM spending_tracker.transactions 
         WHERE transaction_date >= DATE_TRUNC('month', CURRENT_DATE)
         AND amount < 0
     """)
@@ -46,7 +46,7 @@ def get_last_transactions(limit=10):
     conn = get_connection()
     cursor = conn.cursor()
     cursor.execute("""
-        SELECT description, transaction_date, amount FROM finance.transactions 
+        SELECT description, transaction_date, amount FROM spending_tracker.transactions 
         ORDER BY transaction_date DESC 
         LIMIT %s
     """, (limit,))
@@ -73,7 +73,7 @@ def get_spending_by_months(time_frame="All time"):
         cursor.execute("""
             SELECT TO_CHAR(timestamp, 'YYYY-MM') AS month,
             ABS(SUM(amount)) AS spending
-            FROM finance.transactions
+            FROM spending_tracker.transactions
             WHERE amount < 0 AND transaction_date >= %s
             GROUP BY month
             ORDER BY month
@@ -84,7 +84,7 @@ def get_spending_by_months(time_frame="All time"):
         cursor.execute("""
             SELECT TO_CHAR(timestamp, 'YYYY-MM') AS month,
             ABS(SUM(amount)) AS spending
-            FROM finance.transactions
+            FROM spending_tracker.transactions
             WHERE amount < 0
             GROUP BY month
             ORDER BY month
@@ -114,7 +114,7 @@ def get_spending_by_category(time_frame="All time"):
         cursor = conn.cursor()
         cursor.execute("""
             SELECT category, ROUND(ABS(SUM(amount)), 2) AS spending
-            FROM finance.transactions
+            FROM spending_tracker.transactions
             WHERE amount < 0 AND transaction_date >= %s
             GROUP BY category
             ORDER BY spending DESC
@@ -124,7 +124,7 @@ def get_spending_by_category(time_frame="All time"):
         cursor = conn.cursor()
         cursor.execute("""
             SELECT category, ROUND(ABS(SUM(amount)), 2) AS spending
-            FROM finance.transactions
+            FROM spending_tracker.transactions
             WHERE amount < 0
             GROUP BY category
             ORDER BY spending DESC
@@ -150,7 +150,7 @@ def get_largest_transactions(time_frame="All time"):
         cursor = conn.cursor()
         cursor.execute("""
             SELECT transaction_date, description, category, amount
-            FROM finance.transactions
+            FROM spending_tracker.transactions
             WHERE transaction_date >= %s
             ORDER BY amount DESC
             LIMIT 10
@@ -160,7 +160,7 @@ def get_largest_transactions(time_frame="All time"):
         cursor = conn.cursor()
         cursor.execute("""
             SELECT transaction_date, description, category, amount
-            FROM finance.transactions
+            FROM spending_tracker.transactions
             ORDER BY amount DESC
             LIMIT 10
         """)
@@ -184,14 +184,14 @@ def get_total_spending(time_frame="All time"):
         cursor = conn.cursor()
         cursor.execute("""
             SELECT SUM(amount) AS total_spending
-            FROM finance.transactions
+            FROM spending_tracker.transactions
             WHERE transaction_date >= %s
         """, (cutoff_date,))
     else:
         conn = get_connection()
         cursor = conn.cursor()
         cursor.execute("SELECT SUM(amount) as total_spending "
-                       "FROM transactions "
+                       "FROM spending_tracker.transactions "
                        )
     columns = [desc[0] for desc in cursor.description]
     data = cursor.fetchall()
@@ -202,7 +202,7 @@ def get_total_spending(time_frame="All time"):
 def get_each_account_balance_history():
     conn = get_connection()
     cursor = conn.cursor()
-    cursor.execute("SELECT * FROM balance_history")
+    cursor.execute("SELECT * FROM spending_tracker.balance_history")
 
     columns = [desc[0] for desc in cursor.description]
     data = cursor.fetchall()
@@ -213,7 +213,7 @@ def get_total_balance_history():
     conn = get_connection()
     cursor = conn.cursor()
     cursor.execute("SELECT SUM(current_balance) AS current_balance, snapshot_date "
-                   "FROM balance_history "
+                   "FROM spending_tracker.balance_history "
                    "GROUP BY snapshot_date")
 
     columns = [desc[0] for desc in cursor.description]
