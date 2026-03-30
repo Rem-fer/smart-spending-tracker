@@ -44,7 +44,7 @@ SYSTEM_PROMPT = """You are a personal finance analyst helping users understand t
 
    Keep it under 200 words."""
 
-def log_api_cost(response, project="spending_tracker"):
+def log_api_cost(response, project="finance_sandbox"):
     """Log LLM API call costs to database."""
     conn = get_connection()
     cursor = conn.cursor()
@@ -52,7 +52,7 @@ def log_api_cost(response, project="spending_tracker"):
     provider = response.model.split("/")[0] if "/" in response.model else "anthropic"
 
     cursor.execute("""
-        INSERT INTO spending_tracker.api_costs 
+        INSERT INTO finance_sandbox.api_costs 
         (provider, project, model, input_tokens, output_tokens, total_tokens, cost)
         VALUES (%s, %s, %s, %s, %s, %s, %s)
     """, (
