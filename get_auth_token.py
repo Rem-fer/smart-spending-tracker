@@ -6,7 +6,8 @@ import time
 load_dotenv()
 
 #Sandbox URL
-TOKEN_URL = os.getenv("TL_AUTH_URL")  # <-- sandbox
+# TOKEN_URL = os.getenv("TL_AUTH_URL")  # <-- sandbox
+
 AUTH_CODE = "" # <-- Changes everytime
 
 def get_initial_token(auth_code):

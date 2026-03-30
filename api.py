@@ -2,7 +2,7 @@ import requests
 import os
 from dotenv import load_dotenv
 import time
-
+from auth import get_access_token
 
 load_dotenv()
 API_BASE_URL = os.getenv("TL_API_BASE_URL")
@@ -45,9 +45,6 @@ def get_pending_transactions(access_token, account_id):
 def get_direct_debits(access_token, account_id):
     """Fetch direct debits for a specific account."""
     return call_api(f"{API_BASE_URL}/data/v1/accounts/{account_id}/transactions/direct_debits", access_token)
-#
-# def get_account_balance(access_token, account_id):
-#     """Fetch balance for a specific account."""
-#     return call_api(f"{API_BASE_URL}/data/v1/accounts/{account_id}/transactions/balance", access_token)
-#
-#
+
+token = get_access_token()
+print(get_accounts(token))

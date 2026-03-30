@@ -1,29 +1,31 @@
 import requests
 import os
 from dotenv import load_dotenv
-import json
 import time
+import psycopg2
+from db import get_connection
 
 load_dotenv()
 
-AUTH_CODE = "" # <-- Changes everytime (For initial token Auth)
-TOKEN_URL = os.getenv("TL_AUTH_URL")
+AUTH_CODE = "39D8C7A7E700DCCBF98724BACC5203CFFBA8468124F81DF214041AEFDFB30906" # <-- Changes everytime (For initial token Auth)
+TOKEN_URL = "https://auth.truelayer.com/connect/token"
 
 
 def get_initial_token(auth_code):
     """Exchange authorization code for initial access and refresh tokens."""
     try:
         response = requests.post(
-            TOKEN_URL,
+            "https://auth.truelayer.com/connect/token",
             data={
                 "grant_type": "authorization_code",
                 "redirect_uri": "https://console.truelayer.com/redirect-page",
                 "code": auth_code,
             },
-            auth=(os.getenv("TL_CLIENT_ID"), os.getenv("TL_CLIENT_SECRET")),
+            auth=(os.getenv("TL_CLIENT_ID_LIVE"), os.getenv("TL_SECRET_LIVE")),
             headers={"Accept": "application/json"},
             timeout=30,
         )
+        print(response.text)
         response.raise_for_status()
         data = response.json()
 
@@ -40,36 +42,68 @@ def get_initial_token(auth_code):
         return None
 
 def load_tokens():
-    """Load saved access and refresh tokens from JSON file."""
+    """Load saved access and refresh tokens from database."""
+    conn = get_connection()
+    cursor = conn.cursor()
     try:
-        with open("tokens.json", "r") as f:
-            return json.load(f)
-    except FileNotFoundError:
-        print("No tokens found. Run auth first")
+        cursor.execute("""
+            SELECT access_token, refresh_token, expires_at 
+            FROM finance.tokens 
+            WHERE provider = 'truelayer'
+        """)
+        row = cursor.fetchone()
+        if row:
+            return {
+                "access_token": row[0],
+                "refresh_token": row[1],
+                "expires_at": row[2]
+            }
+        else:
+            print("No tokens found. Run auth first")
+            return None
+    except psycopg2.Error as e:
+        print(f"Failed to load tokens: {e}")
         return None
-    except json.JSONDecodeError:
-        print("Corrupted tokens file")
-        return None
+    finally:
+        conn.close()
 
 def save_tokens(tokens):
-    """Save access and refresh tokens to JSON file."""
+    """Save access and refresh tokens to database."""
+    conn = get_connection()
+    cursor = conn.cursor()
     try:
-        with open("tokens.json", "w") as f:
-            json.dump(tokens, f, indent=4)
-    except IOError as e:
+        cursor.execute("""
+            INSERT INTO finance.tokens (provider, access_token, refresh_token, expires_at)
+            VALUES (%s, %s, %s, %s)
+            ON CONFLICT (provider) DO UPDATE SET
+                access_token = EXCLUDED.access_token,
+                refresh_token = EXCLUDED.refresh_token,
+                expires_at = EXCLUDED.expires_at,
+                updated_at = CURRENT_TIMESTAMP
+        """, (
+            "truelayer",
+            tokens["access_token"],
+            tokens["refresh_token"],
+            tokens["expires_at"]
+        ))
+        conn.commit()
+    except psycopg2.Error as e:
         print(f"Failed to save tokens: {e}")
+    finally:
+        conn.close()
+
 
 def refresh_tokens(refresh_token, retries=3):
     """Exchange refresh token for new access and refresh tokens."""
     for attempt in range(retries):
         try:
             response = requests.post(
-                TOKEN_URL,
+                "https://auth.truelayer.com/connect/token",
                 data={
                     "grant_type": "refresh_token",
                     "refresh_token": refresh_token,
                 },
-                auth=(os.getenv("TL_CLIENT_ID"), os.getenv("TL_CLIENT_SECRET")),
+                auth=(os.getenv("TL_CLIENT_ID_LIVE"), os.getenv("TL_SECRET_LIVE")),
                 headers={"Accept": "application/json"},
                 timeout=30,
             )
@@ -101,3 +135,4 @@ def get_access_token():
         return new_tokens.get("access_token")
     else:
         return tokens.get("access_token")
+
