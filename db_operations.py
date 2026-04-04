@@ -1,71 +1,14 @@
-import sqlite3
-from account_data import fetching_all_transactions, get_all_accounts_balance
-from llm import batch_categorise_llm
-from datetime import datetime
-from db import get_connection
 import psycopg2
+from db import get_connection
+from account_data import fetching_all_transactions
+from llm import batch_categorise_llm, extract_merchants_from_descriptions
+from account_data import get_all_accounts_balance
+from datetime import datetime
 
-def create_transactions_database():
-    conn = sqlite3.connect("spending.db")
-    cursor = conn.cursor()
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS transactions (
-            transaction_id TEXT PRIMARY KEY,
-            account_id TEXT,
-            amount REAL,
-            currency TEXT,
-            description TEXT,
-            transaction_date TEXT,
-            timestamp TEXT,
-            transaction_type TEXT,
-            category TEXT,
-            merchant_name TEXT
-        )
-    ''')
-    conn.commit()
-    conn.close()
-    print("Database created successfully")
 
-def create_balances_table():
-    conn = sqlite3.connect("spending.db")
-    cursor = conn.cursor()
-    cursor.execute( ''' 
-        CREATE TABLE IF NOT EXISTS balance_history (
-            account_id TEXT NOT NULL,
-            current_balance REAL,
-            available_balance REAL,
-            overdraft_limit REAL,
-            snapshot_date TEXT NOT NULL,
-            created_at TEXT DEFAULT CURRENT_TIMESTAMP,  -- When record was created
-            PRIMARY KEY (account_id, snapshot_date)
-        )
-    ''')
-    conn.commit()
-    conn.close()
-    print("Database created successfully")
-
-#Create api_cost table
-# conn = sqlite3.connect("spending.db")
-# cursor = conn.cursor()
-#
-# cursor.execute("""
-#     CREATE TABLE IF NOT EXISTS api_costs (
-#         id INTEGER PRIMARY KEY AUTOINCREMENT,
-#         model TEXT NOT NULL,
-#         input_tokens INTEGER,
-#         output_tokens INTEGER,
-#         total_tokens INTEGER,
-#         cost REAL,
-#         timestamp TEXT DEFAULT CURRENT_TIMESTAMP
-#     )
-# """)
-# conn.commit()
-# conn.close()
-# print("Database created successfully")
-
-def save_single_transaction_to_db(transaction, account_id, conn):
+def save_single_transaction_to_db(transaction, account_id, provider, conn):
     """Save a single transaction to the database."""
-    conn = conn
+
     cursor = conn.cursor()
 
     # Extract date from timestamp (YYYY-MM-DD)
@@ -76,10 +19,10 @@ def save_single_transaction_to_db(transaction, account_id, conn):
 
     try:
         cursor.execute("""
-    INSERT INTO finance_sandbox.transactions
+    INSERT INTO finance.transactions
     (transaction_id, account_id, amount, currency, description,
-     transaction_date, timestamp, transaction_type, category,
-     merchant_name)
+     transaction_date, timestamp, transaction_type, category
+     , provider)
     VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
     ON CONFLICT (transaction_id) DO NOTHING
     """, (
@@ -92,7 +35,7 @@ def save_single_transaction_to_db(transaction, account_id, conn):
             transaction['timestamp'],
             transaction['transaction_type'],
             None,  # category - will categorize later
-            None,  # merchant_name - will extract later
+            provider
         ))
         return True
     except psycopg2.Error as e:
@@ -101,19 +44,20 @@ def save_single_transaction_to_db(transaction, account_id, conn):
 
 
 
-def save_all_transactions_to_db(access_token):
+def save_all_transactions_to_db(all_transactions, provider):
     """
-    Fetch and save all transactions for all accounts to the database.
+    Save all transactions for all accounts to the database.
 
     Args:
-        access_token (str): Valid TrueLayer access token
+        all_transactions (dict): Dictionary mapping account IDs to transaction lists.
+                                 Format: {account_id: [transaction1, transaction2, ...]}
+        provider (str): Provider identifier e.g. 'truelayer_barclays', 'truelayer_revolut'
 
     Returns:
         list: Transaction IDs that failed to save (empty if all successful)
         True: If all transactions saved successfully
     """
     print("Fetching all transactions...")
-    all_transactions = fetching_all_transactions(access_token)
     print(f"Got transactions: {all_transactions is not None}")
     failed_transactions = []
     saved_count = 0
@@ -134,7 +78,7 @@ def save_all_transactions_to_db(access_token):
             for transaction in all_transactions[account_id]:
                 # print(f"Saving transaction: {transaction['transaction_id']}")
                 try:
-                    result = save_single_transaction_to_db(transaction, account_id, conn)
+                    result = save_single_transaction_to_db(transaction, account_id, provider, conn)
                     # print(f"Saved: {transaction['transaction_id']} - {result}")
                     saved_count += 1
                 except psycopg2.Error as e:
@@ -182,7 +126,7 @@ def update_all_categories_batch():
     conn = get_connection()
     cursor = conn.cursor()
 
-    cursor.execute("SELECT transaction_id, description FROM finance_sandbox.transactions WHERE category IS NULL")
+    cursor.execute("SELECT transaction_id, description FROM finance.transactions WHERE category IS NULL")
     transactions = cursor.fetchall()
 
     print(f"Categorizing {len(transactions)} transactions...")
@@ -201,7 +145,7 @@ def update_all_categories_batch():
         for trans_id, description in batch:
             category = category_map.get(description, 'Uncategorized')
             cursor.execute(
-                "UPDATE finance_sandbox.transactions SET category = %s WHERE transaction_id = %s",
+                "UPDATE finance.transactions SET category = %s WHERE transaction_id = %s",
                 (category, trans_id)
             )
             total_updated += 1
@@ -218,7 +162,7 @@ def get_random_transactions(number):
 
     # cursor.execute("SELECT description, category FROM transactions LIMIT 100")
     cursor.execute("""
-        SELECT description, category FROM finance_sandbox.transactions 
+        SELECT description, category FROM finance.transactions 
         ORDER BY RANDOM() 
         LIMIT %s
     """,(number,))
@@ -228,19 +172,18 @@ def get_random_transactions(number):
 
     conn.close()
 
-def save_daily_balance_snapshot(access_token):
+def save_daily_balance_snapshot(balances):
     """
     Save daily balance snapshot for all accounts.
 
     Args:
-        access_token (str): Valid TrueLayer access token
+        balances (dict): Dictionary mapping account IDs to balance info.
+                        Format: {account_id: {'current': 22.0, 'available': 222.0, ...}}
 
     Note:
         Should be run once per day (e.g., midnight via cron job).
-        Uses INSERT OR IGNORE to prevent duplicates if run multiple times.
+        Uses ON CONFLICT to prevent duplicates if run multiple times.
     """
-    balances = get_all_accounts_balance(access_token)
-
     if not balances:
         print("No balances to save")
         return
@@ -252,18 +195,162 @@ def save_daily_balance_snapshot(access_token):
 
     for account_id, balance_info in balances.items():
         cursor.execute("""
-            INSERT INTO finance_sandbox.balance_history
-            (account_id, current_balance, available_balance, overdraft_limit, snapshot_date)
-            VALUES (%s, %s, %s, %s, %s)
+            INSERT INTO finance.balance_history
+            (account_id, currency, current_balance, available_balance, overdraft_limit, credit_limit, snapshot_date)
+            VALUES (%s, %s, %s, %s, %s, %s, %s)
             ON CONFLICT (account_id, snapshot_date) DO NOTHING
         """, (
             account_id,
+            balance_info.get('currency'),
             balance_info.get('current'),
             balance_info.get('available'),
             balance_info.get('overdraft'),
+            balance_info.get('credit_limit'),
             snapshot_date
         ))
 
     conn.commit()
     conn.close()
     print(f"Saved balance snapshot for {len(balances)} accounts on {snapshot_date}")
+
+def categorise_transfers():
+    conn = get_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("""
+                UPDATE finance.transactions 
+            SET category = 'Transfer'
+            WHERE description LIKE 'OBA topup%'
+            OR description LIKE '%TO REVOLUT%'
+            OR description LIKE '%BARCLAYCARD%'
+            """)
+        conn.commit()
+        print(f"Categorised {cursor.rowcount} transfers")
+    except psycopg2.Error as e:
+        print(f"Failed to flag transfers: {e}")
+    finally:
+        conn.close()
+
+def categorise_bcard_payments():
+    """Flag Barclaycard bill payments as Credit Card Payment category on both sides."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("""
+            UPDATE finance.transactions 
+            SET category = 'Barclaycard Payment'
+            WHERE (description LIKE '%BBP%' AND provider = 'BARCLAYS')
+            OR (description LIKE '%Thank You%' AND provider = 'BARCLAYCARD')
+        """)
+        conn.commit()
+        print(f"Flagged {cursor.rowcount} credit card payments")
+    except psycopg2.Error as e:
+        print(f"Failed to flag credit card payments: {e}")
+    finally:
+        conn.close()
+
+def save_new_descriptions():
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+    INSERT INTO finance.merchants (description, merchant_name, category)
+    SELECT DISTINCT description, NULL, NULL
+    FROM finance.transactions
+    WHERE category IS NULL
+    ON CONFLICT (description) DO NOTHING
+    """)
+    conn.commit()
+    conn.close()
+
+
+def categorise_step_one():
+    """
+    Categorise transactions by matching against known merchants.
+
+    Updates transaction categories where the description contains a known
+    merchant name from the merchants table. Only updates uncategorised
+    transactions (category IS NULL).
+    """
+    conn = get_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("""
+            UPDATE finance.transactions t
+            SET category = m.category
+            FROM finance.merchants m
+            WHERE t.description ILIKE '%' || m.merchant_name || '%'
+            AND t.category IS NULL
+            AND m.merchant_name IS NOT NULL
+            AND m.category IS NOT NULL
+        """)
+        conn.commit()
+        print(f"Categorised {cursor.rowcount} transactions from merchant lookup")
+    except psycopg2.Error as e:
+        print(f"Failed to categorise transactions: {e}")
+    finally:
+        conn.close()
+
+
+def categorise_step_two():
+    """
+    Categorise remaining uncategorised transactions using LLM.
+
+    For each uncategorised transaction:
+    1. Calls LLM to extract merchant name and category from description
+    2. Updates merchants table with new merchant/category if not already known
+    3. Updates transaction category
+
+    Note:
+        Makes one LLM call per uncategorised transaction — use sparingly.
+        New merchants are saved to merchants table to avoid repeat LLM calls.
+    """
+    conn = get_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("SELECT description FROM finance.transactions WHERE category IS NULL")
+        rows = cursor.fetchall()
+        print(f"Categorising {len(rows)} transactions with LLM...")
+
+        for row in rows:
+            try:
+                categorised = extract_merchants_from_descriptions([row[0]])[0]
+                cursor.execute(
+                    """UPDATE finance.merchants
+                       SET merchant_name = %s, category = %s
+                       WHERE description = %s
+                       AND merchant_name IS NULL
+                       AND category IS NULL""",
+                    (
+                        categorised['merchant_name'],
+                        categorised['category'],
+                        row[0]
+                    )
+                )
+                cursor.execute(
+                    """UPDATE finance.transactions
+                       SET category = %s
+                       WHERE description = %s
+                       AND category IS NULL""",
+                    (
+                        categorised['category'],
+                        row[0]
+                    )
+                )
+                conn.commit()
+            except Exception as e:
+                print(f"Failed to categorise: {row[0]}: {e}")
+                conn.rollback()
+                continue
+
+        print("LLM categorisation complete")
+    except psycopg2.Error as e:
+        print(f"Database error: {e}")
+    finally:
+        conn.close()
+
+
+def categorise_transactions():
+    categorise_transfers()
+    categorise_bcard_payments()
+    categorise_step_one()
+    categorise_step_two()

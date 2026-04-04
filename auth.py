@@ -7,11 +7,8 @@ from db import get_connection
 
 load_dotenv()
 
-AUTH_CODE = "39D8C7A7E700DCCBF98724BACC5203CFFBA8468124F81DF214041AEFDFB30906" # <-- Changes everytime (For initial token Auth)
-TOKEN_URL = "https://auth.truelayer.com/connect/token"
 
-
-def get_initial_token(auth_code):
+def get_initial_token(auth_code, provider):
     """Exchange authorization code for initial access and refresh tokens."""
     try:
         response = requests.post(
@@ -25,7 +22,7 @@ def get_initial_token(auth_code):
             headers={"Accept": "application/json"},
             timeout=30,
         )
-        print(response.text)
+        # print(response.text)
         response.raise_for_status()
         data = response.json()
 
@@ -34,40 +31,14 @@ def get_initial_token(auth_code):
             "refresh_token": data["refresh_token"],
             "expires_at": time.time() + data["expires_in"]
         }
-        save_tokens(tokens)
-        return tokens
+        save_tokens(tokens, provider)
+        print(f"Tokens saved for {provider}")
 
     except requests.exceptions.RequestException as e:
         print(f"Failed to exchange auth code: {e}")
         return None
 
-def load_tokens():
-    """Load saved access and refresh tokens from database."""
-    conn = get_connection()
-    cursor = conn.cursor()
-    try:
-        cursor.execute("""
-            SELECT access_token, refresh_token, expires_at 
-            FROM finance.tokens 
-            WHERE provider = 'truelayer'
-        """)
-        row = cursor.fetchone()
-        if row:
-            return {
-                "access_token": row[0],
-                "refresh_token": row[1],
-                "expires_at": row[2]
-            }
-        else:
-            print("No tokens found. Run auth first")
-            return None
-    except psycopg2.Error as e:
-        print(f"Failed to load tokens: {e}")
-        return None
-    finally:
-        conn.close()
-
-def save_tokens(tokens):
+def save_tokens(tokens, provider):
     """Save access and refresh tokens to database."""
     conn = get_connection()
     cursor = conn.cursor()
@@ -81,7 +52,7 @@ def save_tokens(tokens):
                 expires_at = EXCLUDED.expires_at,
                 updated_at = CURRENT_TIMESTAMP
         """, (
-            "truelayer",
+            provider,
             tokens["access_token"],
             tokens["refresh_token"],
             tokens["expires_at"]
@@ -89,6 +60,33 @@ def save_tokens(tokens):
         conn.commit()
     except psycopg2.Error as e:
         print(f"Failed to save tokens: {e}")
+    finally:
+        conn.close()
+
+
+def load_tokens(provider):
+    """Load saved access and refresh tokens from database."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("""
+            SELECT access_token, refresh_token, expires_at 
+            FROM finance.tokens 
+            WHERE provider = %s
+        """, (provider,))
+        row = cursor.fetchone()
+        if row:
+            return {
+                "access_token": row[0],
+                "refresh_token": row[1],
+                "expires_at": row[2]
+            }
+        else:
+            print(f"No tokens found for {provider}. Run auth first")
+            return None
+    except psycopg2.Error as e:
+        print(f"Failed to load tokens: {e}")
+        return None
     finally:
         conn.close()
 
@@ -122,17 +120,22 @@ def refresh_tokens(refresh_token, retries=3):
                 print(f"Failed to refresh token: {e}")
                 return None
 
-def get_access_token():
+def get_access_token(provider):
     """Get valid access token, refreshing if expired."""
-    tokens = load_tokens()
+    tokens = load_tokens(provider)
     if not tokens:
         return None
     if time.time() > tokens.get("expires_at", 0):
         new_tokens = refresh_tokens(tokens.get("refresh_token"))
         if not new_tokens:
             return None
-        save_tokens(new_tokens)
+        save_tokens(new_tokens,  provider)
         return new_tokens.get("access_token")
     else:
         return tokens.get("access_token")
 
+AUTH_CODE = "" # <-- Changes everytime (For initial token Auth)
+PROVIDER = "" # <-- How you want to name this provider in your db
+
+if __name__ == "__main__":
+    get_initial_token(AUTH_CODE, PROVIDER)

@@ -26,25 +26,30 @@ def call_api(url,access_token, retries=3):
             print(f"API call failed: {e}")
             return None
 
-def get_accounts(access_token):
+def get_accounts(access_token, is_card=False):
     """Fetch all accounts for the authenticated user."""
-    return call_api(url=f"{API_BASE_URL}/data/v1/accounts", access_token=access_token)
+    endpoint = "cards" if is_card else "accounts"
+    return call_api(url=f"{API_BASE_URL}/data/v1/{endpoint}", access_token=access_token)
 
-def get_balance(access_token, account_id):
+
+def get_balance(access_token, account_id, is_card=False):
     """Fetch current balance for a specific account."""
-    return call_api(f"{API_BASE_URL}/data/v1/accounts/{account_id}/balance", access_token)
+    endpoint = "cards" if is_card else "accounts"
+    return call_api(f"{API_BASE_URL}/data/v1/{endpoint}/{account_id}/balance", access_token)
 
-def get_transactions(access_token, account_id):
+def get_transactions(access_token, account_id, is_card=False):
     """Fetch completed transactions for a specific account."""
-    return call_api(f"{API_BASE_URL}/data/v1/accounts/{account_id}/transactions", access_token)
+    endpoint = "cards" if is_card else "accounts"
+    return call_api(f"{API_BASE_URL}/data/v1/{endpoint}/{account_id}/transactions", access_token)
 
-def get_pending_transactions(access_token, account_id):
+def get_pending_transactions(access_token, account_id, is_card=False):
     """Fetch pending transactions for a specific account."""
-    return call_api(f"{API_BASE_URL}/data/v1/accounts/{account_id}/transactions/pending", access_token)
+    endpoint = "cards" if is_card else "accounts"
+    return call_api(f"{API_BASE_URL}/data/v1/{endpoint}/{account_id}/transactions/pending", access_token)
 
-def get_direct_debits(access_token, account_id):
+def get_direct_debits(access_token, account_id, is_card=False):
     """Fetch direct debits for a specific account."""
-    return call_api(f"{API_BASE_URL}/data/v1/accounts/{account_id}/transactions/direct_debits", access_token)
+    endpoint = "cards" if is_card else "accounts"
+    return call_api(f"{API_BASE_URL}/data/v1/{endpoint}/{account_id}/transactions/direct_debits", access_token)
 
-token = get_access_token()
-print(get_accounts(token))
+

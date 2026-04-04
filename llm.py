@@ -6,6 +6,7 @@ import os
 from db_queries import get_spending_by_months, get_spending_by_category
 from db_queries import get_total_spending, get_largest_transactions
 from db import get_connection
+import anthropic
 
 
 load_dotenv()
@@ -44,7 +45,7 @@ SYSTEM_PROMPT = """You are a personal finance analyst helping users understand t
 
    Keep it under 200 words."""
 
-def log_api_cost(response, project="finance_sandbox"):
+def log_api_cost(response, project="finance"):
     """Log LLM API call costs to database."""
     conn = get_connection()
     cursor = conn.cursor()
@@ -52,7 +53,7 @@ def log_api_cost(response, project="finance_sandbox"):
     provider = response.model.split("/")[0] if "/" in response.model else "anthropic"
 
     cursor.execute("""
-        INSERT INTO finance_sandbox.api_costs 
+        INSERT INTO finance.api_costs 
         (provider, project, model, input_tokens, output_tokens, total_tokens, cost)
         VALUES (%s, %s, %s, %s, %s, %s, %s)
     """, (
@@ -194,3 +195,60 @@ def generate_insights(time_frame="All time"):
     log_api_cost(response)
     return response.choices[0].message.content
 
+
+def extract_merchants_from_descriptions(description):
+    """Extract merchant names and categories from transaction descriptions using LLM."""
+
+    # desc_list = "\n".join([f"{i + 1}. {desc}" for i, desc in enumerate(descriptions)])
+
+    prompt = f"""You are a merchant extractor. For each bank transaction description, extract the merchant name and category.
+
+    Categories:
+    - Eating Out
+    - Coffee
+    - Groceries
+    - Transport
+    - Travel
+    - Shopping
+    - Subscriptions
+    - Entertainment
+    - Adult Content
+    - Health & Fitness
+    - Income
+    - Other
+
+    Examples of tricky merchants:
+    - "Pillar Hall" → Eating Out (it's a restaurant)
+    - "Green Valley" → Groceries (it's a grocery store)
+    - "Ministry Of Sound" → Entertainment (it's a nightclub)
+    - "Freshgo" → Groceries
+    - "Laderach" → Shopping (it's a chocolate gift shop)
+    - "Nicolas" → Shopping (it's a wine/drinks shop)
+    - "Dani's" → Other (it's a barber)
+    - "Coffee Van Man" → Coffee
+    - "Tradewind" → Income
+
+    Transaction:
+    {description}
+
+    Return ONLY a JSON array of objects with merchant_name and category.
+    Example: [{{"merchant_name": "Caffe Nero", "category": "Coffee"}}, {{"merchant_name": "TFL", "category": "Transport"}}]
+
+    Rules:
+    - Extract the clean merchant name, not the full description
+    - Return null for merchant_name if it's a transfer or payment
+    - Return only the JSON array, nothing else."""
+
+    response = completion(
+        model="claude-sonnet-4-20250514",
+        messages=[{"role": "user", "content": prompt}],
+        max_tokens=3000,
+        api_key=os.getenv("ANTHROPIC_API_KEY")
+    )
+
+    response_text = response.choices[0].message.content.strip()
+    # print(response_text)
+    merchants = json.loads(response_text)
+
+    log_api_cost(response)
+    return merchants

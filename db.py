@@ -1,9 +1,9 @@
-# db.py
 import psycopg2
-import os
 from dotenv import load_dotenv
+import os
 
 load_dotenv()
+
 
 def get_connection():
     return psycopg2.connect(
@@ -13,4 +13,5 @@ def get_connection():
         user=os.getenv("DB_USER"),
         password=os.getenv("DB_PASSWORD")
     )
+
 
