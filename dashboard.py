@@ -131,6 +131,9 @@ def display_spending_trends(time_period):
 
     categories_spending = get_spending_by_category(time_period)
     categories_spending_reversed = categories_spending.iloc[::-1] # Reversing so catgories pending in order
+    if categories_spending.empty:
+        st.info("No spending data for this period.")
+        return
     top_category = categories_spending.iloc[0]# Top spending category
 
     st.markdown(f"""
