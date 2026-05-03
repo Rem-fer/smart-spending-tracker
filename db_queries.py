@@ -221,3 +221,4 @@ def get_total_balance_history():
     data = cursor.fetchall()
     cursor.close()
     return pd.DataFrame(data, columns=columns)
+
