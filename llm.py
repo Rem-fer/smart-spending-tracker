@@ -11,6 +11,8 @@ from db import get_connection
 load_dotenv()
 # client = Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
 
+model="claude-sonnet-4-5"
+
 SYSTEM_PROMPT = """You are a personal finance analyst helping users understand their spending patterns.
 
    Your role:
@@ -52,7 +54,7 @@ def log_api_cost(response, project="finance_sandbox"):
     provider = response.model.split("/")[0] if "/" in response.model else "anthropic"
 
     cursor.execute("""
-        INSERT INTO finance_sandbox.api_costs 
+        INSERT INTO finance.api_costs 
         (provider, project, model, input_tokens, output_tokens, total_tokens, cost)
         VALUES (%s, %s, %s, %s, %s, %s, %s)
     """, (
@@ -93,7 +95,7 @@ Transaction: "{description}"
 Return ONLY the category name, nothing else."""
 
     response = completion(
-        model="claude-sonnet-4-20250514",
+        model=model,
         messages=[
             {"role": "user", "content": prompt}
         ],
@@ -143,7 +145,7 @@ Example: ["Groceries", "Transport", "Insurance"]
 Return only the JSON array, nothing else."""
 
     response = completion(
-        model="claude-sonnet-4-20250514",
+        model=model,
         messages=[{"role": "user", "content": prompt}],
         max_tokens=500,
         api_key=os.getenv("ANTHROPIC_API_KEY")
@@ -151,7 +153,8 @@ Return only the JSON array, nothing else."""
 
     # Parse JSON response
     response_text = response.choices[0].message.content.strip()
-    categories = json.loads(response_text)
+    response_stripped = response_text.replace("```json", "").replace("```", "").strip()
+    categories = json.loads(response_stripped)
 
     log_api_cost(response)
     # Map descriptions to categories
@@ -182,7 +185,7 @@ def generate_insights(time_frame="All time"):
     """
     full_response =""
     response = completion(
-        model="claude-sonnet-4-20250514",  # or "gpt-4", "llama-3.1-70b-versatile"
+        model=model,  # or "gpt-4", "llama-3.1-70b-versatile"
         messages=[
             {"role": "system", "content": SYSTEM_PROMPT},
             {"role": "user", "content": user_data}
